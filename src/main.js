@@ -92,7 +92,93 @@ async function main() {
             return parts.join(', ') || null;
         };
 
+        const sanitizeDescriptionHtml = (html) => {
+            if (!toText(html)) return null;
+
+            const $ = cheerioLoad(`<div id="__nhs_desc_root__">${html}</div>`, { decodeEntities: false });
+            const $root = $('#__nhs_desc_root__');
+
+            $root.find('script, style, noscript, iframe, svg, canvas').remove();
+            $root.find('form, button, input, select, textarea').remove();
+            $root.find('nav, header, footer, aside').remove();
+            $root.find('img, picture, video, audio, source').remove();
+
+            // Known non-description blocks present inside the main content column.
+            $root.find('.show-mobile, .forms-wrapper-white, .nhsuk-action-link, .save-job, .nhsuk-button, .nhs-open-job-inset').remove();
+
+            // Fix invalid NHS markup like: <p id="job_description"><p>...</p></p>
+            $root.find('p').each((_, el) => {
+                const $p = $(el);
+                if ($p.children('p').length) $p.replaceWith($p.contents());
+            });
+
+            const allowedTags = new Set(['h2', 'h3', 'h4', 'p', 'ul', 'ol', 'li', 'br', 'strong', 'em', 'b', 'i', 'a']);
+
+            // Unwrap any unknown tags but keep their contents.
+            $root.find('*').each((_, el) => {
+                const tag = el.tagName?.toLowerCase();
+                if (!tag) return;
+                if (allowedTags.has(tag)) return;
+                const $el = $(el);
+                $el.replaceWith($el.contents());
+            });
+
+            // Strip attributes (keep href on anchors).
+            $root.find('h2, h3, h4, p, ul, ol, li, br, strong, em, b, i').each((_, el) => {
+                const $el = $(el);
+                const attrs = el.attribs || {};
+                for (const k of Object.keys(attrs)) $el.removeAttr(k);
+            });
+            $root.find('a').each((_, el) => {
+                const $el = $(el);
+                const href = $el.attr('href');
+                const attrs = el.attribs || {};
+                for (const k of Object.keys(attrs)) {
+                    if (k !== 'href') $el.removeAttr(k);
+                }
+                if (!href) $el.replaceWith($el.contents());
+            });
+
+            // Remove empty/placeholder tags produced by the site (e.g., <p id="job_overview"></p>).
+            $root.find('p, h2, h3, h4, li, strong, em, b, i, a').each((_, el) => {
+                const $el = $(el);
+                const text = $el.text().replace(/\s+/g, ' ').trim();
+                const hasMeaningfulChild = $el.find('br, p, li, ul, ol, strong, em, b, i, a').length > 0;
+                if (!text && !hasMeaningfulChild) $el.remove();
+            });
+
+            const out = $root.html()
+                ?.replace(/[ \t]+\n/g, '\n')
+                .replace(/\n{3,}/g, '\n\n')
+                .trim();
+
+            return toText(out) ? out : null;
+        };
+
         const extractDescriptionHtml = ($) => {
+            // Preferred: the main narrative container includes headings and section text.
+            const wrap = $('div.nhsuk-grid-column-two-thirds.wrap-paragraphs, div.wrap-paragraphs').first();
+            if (wrap && wrap.length) {
+                const inner = wrap.html() || '';
+                const $$ = cheerioLoad(`<div id="__nhs_description_wrap__">${inner}</div>`, { decodeEntities: false });
+                const $root = $$('#__nhs_description_wrap__');
+
+                // Cut off the "Details" section (salary/contract/etc) to keep description focused.
+                $root.find('h2, h3').each((_, el) => {
+                    const heading = toText($$(el).text())?.toLowerCase();
+                    if (heading === 'details') {
+                        $$(el).nextAll().remove();
+                        $$(el).remove();
+                        return false;
+                    }
+                    return undefined;
+                });
+
+                const html = sanitizeDescriptionHtml($root.html());
+                if (html && cleanText(html).length >= 50) return html;
+            }
+
+            // Fallback: stitch fragments by IDs.
             const chunks = [];
             const seenKeys = new Set();
 
@@ -105,7 +191,6 @@ async function main() {
                 chunks.push(html.trim());
             };
 
-            // Common NHS job page fragments (often <p id="..."><p>...</p>...</p>)
             const preferredSelectors = [
                 '#job_overview',
                 '#job_description',
@@ -125,33 +210,7 @@ async function main() {
                 if (outer && toText(outer)) add(outer);
             }
 
-            // Fallback: extract from the main narrative container.
-            if (!chunks.length) {
-                const wrap = $('div.nhsuk-grid-column-two-thirds.wrap-paragraphs, div.wrap-paragraphs, #nhsuk-grid-column-two-thirds').first();
-                if (wrap && wrap.length) {
-                    const inner = wrap.html() || '';
-                    const $$ = cheerioLoad(`<div id="__nhs_description_wrap__">${inner}</div>`);
-                    const $root = $$('#__nhs_description_wrap__');
-
-                    $root.find('script, style, noscript, iframe').remove();
-
-                    // Remove the "Details" section (salary/contract/etc) to keep the description focused.
-                    $root.find('h2, h3').each((_, el) => {
-                        const heading = toText($$(el).text())?.toLowerCase();
-                        if (heading === 'details') {
-                            $$(el).nextAll().remove();
-                            $$(el).remove();
-                            return false;
-                        }
-                        return undefined;
-                    });
-
-                    const html = $root.html();
-                    if (html && toText(html)) add(html);
-                }
-            }
-
-            return chunks.length ? chunks.join('\n') : null;
+            return chunks.length ? sanitizeDescriptionHtml(chunks.join('\n')) : null;
         };
 
         const cleanText = (html) => {
@@ -159,6 +218,29 @@ async function main() {
             const $ = cheerioLoad(html);
             $('script, style, noscript, iframe').remove();
             return $.root().text().replace(/\s+/g, ' ').trim();
+        };
+
+        const htmlToReadableText = (html) => {
+            if (!toText(html)) return null;
+
+            const $ = cheerioLoad(`<div id="__nhs_text_root__">${html}</div>`, { decodeEntities: true });
+            const $root = $('#__nhs_text_root__');
+            $root.find('script, style, noscript, iframe, svg, canvas').remove();
+
+            const blockSel = 'h2,h3,h4,p,li';
+            const blocks = $root.find(blockSel).filter((_, el) => $(el).parents(blockSel).length === 0);
+
+            const lines = [];
+            blocks.each((_, el) => {
+                const $el = $(el);
+                const tag = el.tagName?.toLowerCase();
+                const text = $el.text().replace(/\s+/g, ' ').trim();
+                if (!text) return;
+                lines.push(tag === 'li' ? `- ${text}` : text);
+            });
+
+            const out = lines.join('\n\n').replace(/\n{3,}/g, '\n\n').trim();
+            return out || null;
         };
 
         const firstNonEmpty = (...vals) => {
@@ -534,7 +616,8 @@ async function main() {
                             data.description_html = extractDescriptionHtml($);
                         }
 
-                        data.description_text = data.description_html ? cleanText(data.description_html) : null;
+                        if (data.description_html) data.description_html = sanitizeDescriptionHtml(data.description_html);
+                        data.description_text = data.description_html ? htmlToReadableText(data.description_html) : null;
 
                         // Extract reference number
                         const reference = firstNonEmpty(

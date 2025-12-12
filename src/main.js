@@ -44,6 +44,34 @@ async function main() {
             return text || null;
         };
 
+        const squashRepeats = (val) => {
+            let t = toText(val);
+            if (!t) return null;
+
+            // If the string is exactly two identical halves, keep one.
+            if (t.length % 2 === 0) {
+                const half = t.length / 2;
+                const first = t.slice(0, half).trim();
+                const second = t.slice(half).trim();
+                if (first && first === second) t = first;
+            }
+
+            // Collapse repeated phrase separated by whitespace (e.g., "Full-time Full-time").
+            const repeatPhrase = t.match(/^(.{3,})\s+\1$/);
+            if (repeatPhrase) t = repeatPhrase[1].trim();
+
+            // Collapse immediate duplicate tokens.
+            const tokens = t.split(/\s+/);
+            const collapsed = [];
+            for (const tok of tokens) {
+                if (!collapsed.length || collapsed[collapsed.length - 1] !== tok) collapsed.push(tok);
+            }
+            t = collapsed.join(' ').trim();
+            return t || null;
+        };
+
+        const normalizeValue = (val) => squashRepeats(val);
+
         const cleanText = (html) => {
             if (!html) return '';
             const $ = cheerioLoad(html);
@@ -157,7 +185,7 @@ async function main() {
             $('li.search-result, article.search-result, div.search-result').each((_, elem) => {
                 const $elem = $(elem);
                 const titleEl = $elem.find('[data-test="search-result-job-title"], h2 a, h3 a, a[href*="/candidate/jobadvert/"]').first();
-                const title = toText(titleEl.text());
+                const title = normalizeValue(titleEl.text());
                 const href = titleEl.attr('href');
                 
                 if (title && href) {
@@ -166,37 +194,37 @@ async function main() {
                         seenUrls.add(jobUrl);
                         
                         const orgBlock = $elem.find('[data-test="search-result-location"] h3').first();
-                        const company = firstNonEmpty(
+                        const company = normalizeValue(firstNonEmpty(
                             orgBlock.clone().children().remove().end().text(),
                             $elem.find('[data-test="search-result-location"]').text(),
                             $elem.find('[class*="employer"], [class*="organisation"]').first().text(),
-                        );
-                        const location = firstNonEmpty(
+                        ));
+                        const location = normalizeValue(firstNonEmpty(
                             orgBlock.find('.location-font-size').text(),
                             $elem.find('[data-test="search-result-location"] .location-font-size').text(),
                             $elem.find('[class*="location"]').first().text(),
-                        );
-                        const salary = firstNonEmpty(
+                        ));
+                        const salary = normalizeValue(firstNonEmpty(
                             $elem.find('[data-test="search-result-salary"] strong').first().text(),
                             $elem.find('[class*="salary"]').first().text(),
-                        );
-                        const datePosted = firstNonEmpty(
+                        ));
+                        const datePosted = normalizeValue(firstNonEmpty(
                             $elem.find('[data-test="search-result-publicationDate"] strong').first().text(),
                             $elem.find('time[datetime]').first().attr('datetime'),
-                        );
-                        const closingDate = firstNonEmpty(
+                        ));
+                        const closingDate = normalizeValue(firstNonEmpty(
                             $elem.find('[data-test="search-result-closingDate"] strong').first().text(),
                             $elem.find('[class*="closing"]').first().text(),
-                        );
-                        const contractType = firstNonEmpty(
+                        ));
+                        const contractType = normalizeValue(firstNonEmpty(
                             $elem.find('[data-test="search-result-jobType"] strong').first().text(),
                             $elem.find('[data-test="search-result-contractType"] strong').first().text(),
                             $elem.find('[class*="contract"]').first().text(),
-                        );
-                        const workingPattern = firstNonEmpty(
+                        ));
+                        const workingPattern = normalizeValue(firstNonEmpty(
                             $elem.find('[data-test="search-result-workingPattern"] strong').first().text(),
                             $elem.find('[class*="working-pattern"], [class*="hours"]').first().text(),
-                        );
+                        ));
                         
                         jobs.push({
                             title,
@@ -220,7 +248,7 @@ async function main() {
                     const jobUrl = toAbs(href, baseUrl);
                     if (jobUrl && !seenUrls.has(jobUrl)) {
                         seenUrls.add(jobUrl);
-                        const title = firstNonEmpty($(a).text(), $(a).attr('title'));
+                        const title = normalizeValue(firstNonEmpty($(a).text(), $(a).attr('title')));
                         if (title) {
                             jobs.push({ title, url: jobUrl });
                         }
@@ -277,14 +305,14 @@ async function main() {
                     if (jsonData?.results?.length) {
                         // Process JSON API response
                         jobs = jsonData.results.map(job => ({
-                            title: job.title || null,
-                            company: job.employer || job.organisation || job.company || null,
-                            location: job.location || job.jobLocation || null,
-                            salary: job.salary || job.payRange || null,
-                            contract_type: job.contractType || job.contract || null,
-                            working_pattern: job.workingPattern || job.workingHours || null,
-                            date_posted: job.datePosted || job.postedDate || null,
-                            closing_date: job.closingDate || job.deadline || null,
+                            title: normalizeValue(job.title),
+                            company: normalizeValue(job.employer || job.organisation || job.company),
+                            location: normalizeValue(job.location || job.jobLocation),
+                            salary: normalizeValue(job.salary || job.payRange),
+                            contract_type: normalizeValue(job.contractType || job.contract),
+                            working_pattern: normalizeValue(job.workingPattern || job.workingHours),
+                            date_posted: normalizeValue(job.datePosted || job.postedDate),
+                            closing_date: normalizeValue(job.closingDate || job.deadline),
                             reference: job.reference || job.jobReference || job.referenceNumber || null,
                             url: toAbs(job.url || job.link || job.jobUrl || job.href),
                         }));
@@ -349,71 +377,105 @@ async function main() {
                             '#employer_address_line_3',
                             '#employer_town',
                             '#employer_postcode',
-                        ].map(sel => toText($(sel).text())).filter(Boolean);
+                        ].map(sel => normalizeValue($(sel).text())).filter(Boolean);
+
+                        const uniqueParts = [];
+                        const seenParts = new Set();
+                        for (const part of addressParts) {
+                            if (!seenParts.has(part)) {
+                                uniqueParts.push(part);
+                                seenParts.add(part);
+                            }
+                        }
 
                         if (!data.title) {
-                            data.title = firstNonEmpty(
+                            data.title = normalizeValue(firstNonEmpty(
                                 $('#heading').first().text(),
                                 $('h1, [class*="job-title"]').first().text(),
                                 fromList?.title,
-                            );
+                            ));
                         }
                         
                         if (!data.company) {
-                            data.company = firstNonEmpty(
+                            data.company = normalizeValue(firstNonEmpty(
                                 $('#employer_name').text(),
                                 $('[class*="employer"], [class*="organisation"]').first().text(),
                                 fromList?.company,
-                            );
+                            ));
                         }
 
                         if (!data.location) {
-                            data.location = firstNonEmpty(
-                                addressParts.join(', '),
+                            data.location = normalizeValue(firstNonEmpty(
+                                uniqueParts.join(', '),
                                 $('[class*="location"]').text(),
                                 fromList?.location,
-                            );
+                            ));
                         }
 
                         if (!data.salary) {
-                            data.salary = firstNonEmpty(
+                            data.salary = normalizeValue(firstNonEmpty(
                                 $('#fixed_salary').text(),
                                 $('#salary').text(),
                                 fromList?.salary,
-                            );
+                            ));
                         }
 
                         if (!data.date_posted) {
-                            data.date_posted = firstNonEmpty(
+                            data.date_posted = normalizeValue(firstNonEmpty(
                                 $('time[datetime]').first().attr('datetime'),
                                 fromList?.date_posted,
-                            );
+                            ));
                         }
 
-                        const closingDate = firstNonEmpty(
+                        const closingDate = normalizeValue(firstNonEmpty(
                             $('#closing_date').text()?.replace(/the closing date is/i, ''),
                             $('[class*="closing-date"]').text(),
                             fromList?.closing_date,
-                        );
+                        ));
                         
                         if (!data.job_type) {
-                            data.job_type = firstNonEmpty(
+                            data.job_type = normalizeValue(firstNonEmpty(
                                 $('#contract_type').text(),
                                 $('[class*="contract-type"]').first().text(),
                                 fromList?.contract_type,
-                            );
+                            ));
                         }
 
-                        const workingPattern = firstNonEmpty(
+                        const workingPattern = normalizeValue(firstNonEmpty(
                             $('#working_pattern_heading').next('p').text(),
                             $('[class*="working-pattern"]').first().text(),
                             fromList?.working_pattern,
-                        );
+                        ));
                         
                         // Extract description
                         if (!data.description_html) {
-                            const descSection = $('#job_description, section[class*="job-description"], div[class*="job-description"], #job-description, .description').first();
-                            data.description_html = descSection && descSection.length ? descSection.html()?.trim() : null;
+                            const descriptionChunks = [];
+                            const selectors = [
+                                '#job_description',
+                                '#job_description_text',
+                                '#job_description_content',
+                                '#job-profile-section',
+                                '#job_profile_section',
+                                '#job-summary',
+                                '#job_summary',
+                                '#main_duties',
+                                '#main-duties',
+                                '#person_specification',
+                                'section[class*="job-description"]',
+                                'div[class*="job-description"]',
+                                '#job-description',
+                                '.description',
+                            ];
+                            for (const sel of selectors) {
+                                const el = $(sel).first();
+                                if (el && el.length) {
+                                    const html = el.html();
+                                    if (html && toText(html)) descriptionChunks.push(html.trim());
+                                }
+                            }
+                            if (descriptionChunks.length) {
+                                data.description_html = descriptionChunks.join('\n');
+                            }
                         }
 
                         data.description_text = data.description_html ? cleanText(data.description_html) : null;
@@ -426,15 +488,15 @@ async function main() {
                         );
 
                         const item = {
-                            title: data.title || null,
-                            company: data.company || null,
-                            location: data.location || null,
-                            salary: data.salary || null,
-                            contract_type: data.job_type || null,
-                            working_pattern: workingPattern || null,
-                            date_posted: data.date_posted || null,
+                            title: normalizeValue(data.title || fromList?.title),
+                            company: normalizeValue(data.company || fromList?.company),
+                            location: normalizeValue(data.location || fromList?.location),
+                            salary: normalizeValue(data.salary || fromList?.salary),
+                            contract_type: normalizeValue(data.job_type || fromList?.contract_type),
+                            working_pattern: normalizeValue(workingPattern || fromList?.working_pattern),
+                            date_posted: normalizeValue(data.date_posted || fromList?.date_posted),
                             closing_date: closingDate || null,
-                            reference: reference || null,
+                            reference: normalizeValue(reference || fromList?.reference),
                             description_html: data.description_html || null,
                             description_text: data.description_text || null,
                             url: request.url,

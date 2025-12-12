@@ -1,0 +1,27 @@
+{
+  "name": "nhs-uk-jobs-scraper",
+  "version": "1.0.0",
+  "description": "Extract NHS UK job listings with JSON API and HTML parsing capabilities. Fast, reliable, and comprehensive healthcare job data extraction.",
+  "type": "module",
+  "scripts": {
+    "start": "node src/main.js"
+  },
+  "dependencies": {
+    "apify": "^3.4.5",
+    "crawlee": "^3.15.3",
+    "cheerio": "^1.0.0-rc.12",
+    "got-scraping": "^4.1.2"
+  },
+  "keywords": [
+    "nhs",
+    "jobs",
+    "healthcare",
+    "uk",
+    "scraper",
+    "medical",
+    "nursing",
+    "recruitment"
+  ],
+  "author": "Shahid Irfan",
+  "license": "MIT"
+}

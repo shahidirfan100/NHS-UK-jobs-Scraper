@@ -1,0 +1,12 @@
+{
+  "keyword": "nurse",
+  "location": "London",
+  "distance": "10",
+  "contractType": "",
+  "workingPattern": "",
+  "staffGroup": "",
+  "payRange": "",
+  "results_wanted": 20,
+  "max_pages": 5,
+  "collectDetails": true
+}

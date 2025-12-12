@@ -1,0 +1,103 @@
+{
+  "title": "NHS UK Jobs Scraper",
+  "description": "Extract job listings from NHS Jobs UK. Search by keyword, location, contract type, and more. Automatically tries JSON API first, then falls back to HTML parsing for maximum reliability.",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "startUrl": {
+      "title": "Start URL",
+      "type": "string",
+      "description": "Start from a specific NHS Jobs search URL. If provided, this overrides all search parameters.",
+      "editor": "textfield",
+      "example": "https://www.jobs.nhs.uk/candidate/search/results?keyword=nurse"
+    },
+    "keyword": {
+      "title": "Job Keyword",
+      "type": "string",
+      "description": "Search for jobs by title, skill, or keyword (e.g., 'Nurse', 'Doctor', 'Administrator').",
+      "editor": "textfield",
+      "prefill": "nurse"
+    },
+    "location": {
+      "title": "Location",
+      "type": "string",
+      "description": "Search for jobs in a specific location (city, town, or postcode).",
+      "editor": "textfield",
+      "example": "London"
+    },
+    "distance": {
+      "title": "Distance (miles)",
+      "type": "string",
+      "description": "Search radius in miles from the location (e.g., '5', '10', '20').",
+      "editor": "textfield",
+      "enum": ["", "5", "10", "15", "20", "30", "40", "50"],
+      "example": "10"
+    },
+    "contractType": {
+      "title": "Contract Type",
+      "type": "string",
+      "description": "Filter by contract type.",
+      "editor": "select",
+      "enum": ["", "Permanent", "Fixed-Term", "Locum", "Bank", "Apprenticeship"],
+      "enumTitles": ["All", "Permanent", "Fixed-Term", "Locum", "Bank", "Apprenticeship"]
+    },
+    "workingPattern": {
+      "title": "Working Pattern",
+      "type": "string",
+      "description": "Filter by working pattern.",
+      "editor": "select",
+      "enum": ["", "Full time", "Part time", "Flexible working", "Home or remote working", "Compressed hours", "Annualised hours"],
+      "enumTitles": ["All", "Full Time", "Part Time", "Flexible Working", "Home/Remote Working", "Compressed Hours", "Annualised Hours"]
+    },
+    "staffGroup": {
+      "title": "Staff Group",
+      "type": "string",
+      "description": "Filter by NHS staff group (e.g., 'Nursing and Midwifery', 'Medical and Dental').",
+      "editor": "textfield",
+      "example": "Nursing and Midwifery"
+    },
+    "payRange": {
+      "title": "Pay Range",
+      "type": "string",
+      "description": "Filter by salary range or NHS pay band.",
+      "editor": "textfield",
+      "example": "Band 5"
+    },
+    "collectDetails": {
+      "title": "Collect Full Job Details",
+      "type": "boolean",
+      "description": "Enable to visit each job page and extract complete descriptions. Disable for faster scraping with basic info only.",
+      "editor": "checkbox",
+      "default": true
+    },
+    "results_wanted": {
+      "title": "Maximum Results",
+      "type": "integer",
+      "description": "Maximum number of jobs to extract. Leave empty or set high for unlimited.",
+      "minimum": 1,
+      "default": 100,
+      "editor": "number"
+    },
+    "max_pages": {
+      "title": "Maximum Pages",
+      "type": "integer",
+      "description": "Safety limit on number of search result pages to process.",
+      "minimum": 1,
+      "maximum": 100,
+      "editor": "number",
+      "default": 50
+    },
+    "proxyConfiguration": {
+      "title": "Proxy Configuration",
+      "type": "object",
+      "description": "Configure proxy settings. Residential proxies recommended for best results.",
+      "editor": "proxy",
+      "default": {
+        "useApifyProxy": true,
+        "apifyProxyGroups": ["RESIDENTIAL"]
+      }
+    }
+  },
+  "required": [],
+  "additionalProperties": false
+}

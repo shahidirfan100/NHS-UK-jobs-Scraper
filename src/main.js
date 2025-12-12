@@ -72,6 +72,88 @@ async function main() {
 
         const normalizeValue = (val) => squashRepeats(val);
 
+        const normalizeLocation = (val) => {
+            const t = squashRepeats(val);
+            if (!t) return null;
+
+            // Normalize comma-separated address/location parts, but keep ordering.
+            const rawParts = t.split(',').map(p => squashRepeats(p)).filter(Boolean);
+            if (rawParts.length <= 1) return t;
+
+            const seen = new Set();
+            const parts = [];
+            for (const p of rawParts) {
+                const key = p.toLowerCase();
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    parts.push(p);
+                }
+            }
+            return parts.join(', ') || null;
+        };
+
+        const extractDescriptionHtml = ($) => {
+            const chunks = [];
+            const seenKeys = new Set();
+
+            const add = (html) => {
+                const cleaned = cleanText(html);
+                const key = cleaned.toLowerCase();
+                if (!cleaned || cleaned.length < 20) return;
+                if (seenKeys.has(key)) return;
+                seenKeys.add(key);
+                chunks.push(html.trim());
+            };
+
+            // Common NHS job page fragments (often <p id="..."><p>...</p>...</p>)
+            const preferredSelectors = [
+                '#job_overview',
+                '#job_description',
+                '#main_duties',
+                '#about_organisation',
+                '#person_specification',
+                '#supporting_information',
+                '#job_summary',
+                '#job_description_text',
+                '#job_description_content',
+            ];
+
+            for (const sel of preferredSelectors) {
+                const el = $(sel).first();
+                if (!el || !el.length) continue;
+                const outer = $.html(el);
+                if (outer && toText(outer)) add(outer);
+            }
+
+            // Fallback: extract from the main narrative container.
+            if (!chunks.length) {
+                const wrap = $('div.nhsuk-grid-column-two-thirds.wrap-paragraphs, div.wrap-paragraphs, #nhsuk-grid-column-two-thirds').first();
+                if (wrap && wrap.length) {
+                    const inner = wrap.html() || '';
+                    const $$ = cheerioLoad(`<div id="__nhs_description_wrap__">${inner}</div>`);
+                    const $root = $$('#__nhs_description_wrap__');
+
+                    $root.find('script, style, noscript, iframe').remove();
+
+                    // Remove the "Details" section (salary/contract/etc) to keep the description focused.
+                    $root.find('h2, h3').each((_, el) => {
+                        const heading = toText($$(el).text())?.toLowerCase();
+                        if (heading === 'details') {
+                            $$(el).nextAll().remove();
+                            $$(el).remove();
+                            return false;
+                        }
+                        return undefined;
+                    });
+
+                    const html = $root.html();
+                    if (html && toText(html)) add(html);
+                }
+            }
+
+            return chunks.length ? chunks.join('\n') : null;
+        };
+
         const cleanText = (html) => {
             if (!html) return '';
             const $ = cheerioLoad(html);
@@ -199,7 +281,7 @@ async function main() {
                             $elem.find('[data-test="search-result-location"]').text(),
                             $elem.find('[class*="employer"], [class*="organisation"]').first().text(),
                         ));
-                        const location = normalizeValue(firstNonEmpty(
+                        const location = normalizeLocation(firstNonEmpty(
                             orgBlock.find('.location-font-size').text(),
                             $elem.find('[data-test="search-result-location"] .location-font-size').text(),
                             $elem.find('[class*="location"]').first().text(),
@@ -307,7 +389,7 @@ async function main() {
                         jobs = jsonData.results.map(job => ({
                             title: normalizeValue(job.title),
                             company: normalizeValue(job.employer || job.organisation || job.company),
-                            location: normalizeValue(job.location || job.jobLocation),
+                            location: normalizeLocation(job.location || job.jobLocation),
                             salary: normalizeValue(job.salary || job.payRange),
                             contract_type: normalizeValue(job.contractType || job.contract),
                             working_pattern: normalizeValue(job.workingPattern || job.workingHours),
@@ -405,7 +487,7 @@ async function main() {
                         }
 
                         if (!data.location) {
-                            data.location = normalizeValue(firstNonEmpty(
+                            data.location = normalizeLocation(firstNonEmpty(
                                 uniqueParts.join(', '),
                                 $('[class*="location"]').text(),
                                 fromList?.location,
@@ -449,33 +531,7 @@ async function main() {
                         
                         // Extract description
                         if (!data.description_html) {
-                            const descriptionChunks = [];
-                            const selectors = [
-                                '#job_description',
-                                '#job_description_text',
-                                '#job_description_content',
-                                '#job-profile-section',
-                                '#job_profile_section',
-                                '#job-summary',
-                                '#job_summary',
-                                '#main_duties',
-                                '#main-duties',
-                                '#person_specification',
-                                'section[class*="job-description"]',
-                                'div[class*="job-description"]',
-                                '#job-description',
-                                '.description',
-                            ];
-                            for (const sel of selectors) {
-                                const el = $(sel).first();
-                                if (el && el.length) {
-                                    const html = el.html();
-                                    if (html && toText(html)) descriptionChunks.push(html.trim());
-                                }
-                            }
-                            if (descriptionChunks.length) {
-                                data.description_html = descriptionChunks.join('\n');
-                            }
+                            data.description_html = extractDescriptionHtml($);
                         }
 
                         data.description_text = data.description_html ? cleanText(data.description_html) : null;
@@ -490,7 +546,7 @@ async function main() {
                         const item = {
                             title: normalizeValue(data.title || fromList?.title),
                             company: normalizeValue(data.company || fromList?.company),
-                            location: normalizeValue(data.location || fromList?.location),
+                            location: normalizeLocation(data.location || fromList?.location),
                             salary: normalizeValue(data.salary || fromList?.salary),
                             contract_type: normalizeValue(data.job_type || fromList?.contract_type),
                             working_pattern: normalizeValue(workingPattern || fromList?.working_pattern),

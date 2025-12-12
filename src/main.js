@@ -4,10 +4,7 @@ import { CheerioCrawler, Dataset } from 'crawlee';
 import { load as cheerioLoad } from 'cheerio';
 import { gotScraping } from 'got-scraping';
 
-await Actor.init();
-
-async function main() {
-    try {
+await Actor.main(async () => {
         const input = (await Actor.getInput()) || {};
         const {
             keyword = '',
@@ -21,8 +18,6 @@ async function main() {
             max_pages: MAX_PAGES_RAW = 50,
             collectDetails = true,
             startUrl,
-            startUrls,
-            url,
             proxyConfiguration,
         } = input;
 
@@ -264,9 +259,7 @@ async function main() {
         };
 
         const initial = [];
-        if (Array.isArray(startUrls) && startUrls.length) initial.push(...startUrls);
         if (startUrl) initial.push(startUrl);
-        if (url) initial.push(url);
         if (!initial.length) {
             initial.push(buildStartUrl(keyword, location, distance, contractType, workingPattern, staffGroup, payRange));
         }
@@ -655,13 +648,4 @@ async function main() {
 
         await crawler.run(initial.map(u => ({ url: u, userData: { label: 'LIST', pageNo: 1 } })));
         log.info(`Scraping completed. Total jobs saved: ${saved}`);
-        
-    } finally {
-        await Actor.exit();
-    }
-}
-
-main().catch(err => {
-    console.error(err);
-    process.exit(1);
 });

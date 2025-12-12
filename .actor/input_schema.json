@@ -29,8 +29,9 @@
       "title": "Distance (miles)",
       "type": "string",
       "description": "Search radius in miles from the location (e.g., '5', '10', '20').",
-      "editor": "textfield",
+      "editor": "select",
       "enum": ["", "5", "10", "15", "20", "30", "40", "50"],
+      "enumTitles": ["All", "5 miles", "10 miles", "15 miles", "20 miles", "30 miles", "40 miles", "50 miles"],
       "example": "10"
     },
     "contractType": {

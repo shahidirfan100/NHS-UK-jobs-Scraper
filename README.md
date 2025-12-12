@@ -439,5 +439,3 @@ Built with modern web scraping best practices:
 ---
 
 **Ready to extract NHS Jobs data?** Click the "Try for free" button to start scraping immediately!
-
-*Last updated: December 2024*

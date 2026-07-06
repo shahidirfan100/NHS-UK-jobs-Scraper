@@ -113,6 +113,20 @@ await Actor.main(async () => {
         return null;
     };
 
+    const PARAM_TYPE_VALUES = new Set([
+        'int',
+        'integer',
+        'string',
+        'boolean',
+        'bool',
+        'float',
+        'number',
+        'no',
+        'yes',
+        'true',
+        'false',
+    ]);
+
     /** Parse API_DISCOVERY.md with fully case-insensitive key/field matching. */
     const parseDiscoveryFile = (content) => {
         const result = { endpoint: null, method: 'GET', headers: {}, params: {}, fields: {} };
@@ -129,7 +143,16 @@ await Actor.main(async () => {
                     if (parts[0].includes('---')) continue;
                     rawKey = parts[0];
                     rawVal = parts[1];
-                } else continue;
+                    const tableKey = rawKey.toLowerCase();
+                    // Only read endpoint/method/auth from markdown tables — skip param doc rows
+                    // (e.g. "| page | int | no | ..." must not map page -> int).
+                    if (tableKey === 'endpoint' || tableKey === 'url' || tableKey === 'api_url' || tableKey === 'api url') {
+                        if (/^https?:\/\//i.test(rawVal)) result.endpoint = rawVal;
+                    } else if (tableKey === 'method' || tableKey === 'http_method' || tableKey === 'http method') {
+                        result.method = rawVal.toUpperCase();
+                    }
+                }
+                continue;
             } else {
                 const clean = line.replace(/^[-*+]\s*/, '').trim();
                 const colonIdx = clean.indexOf(':');
@@ -266,7 +289,10 @@ await Actor.main(async () => {
     const getDiscoveryParamName = (paramsMap, defaultName) => {
         const target = defaultName.toLowerCase();
         for (const [k, v] of Object.entries(paramsMap)) {
-            if (k.toLowerCase() === target) return v;
+            if (k.toLowerCase() !== target) continue;
+            const mapped = String(v || '').trim();
+            if (!mapped || PARAM_TYPE_VALUES.has(mapped.toLowerCase())) return defaultName;
+            return mapped;
         }
         return defaultName;
     };
@@ -287,7 +313,7 @@ await Actor.main(async () => {
         }
         if (cleanKeyword) u.searchParams.set(keywordParamName, cleanKeyword);
         if (cleanLocation) u.searchParams.set(locationParamName, cleanLocation);
-        if (p > 1) u.searchParams.set(pageParamName, String(p));
+        u.searchParams.set(pageParamName, String(p));
         return u.href;
     };
 
@@ -368,34 +394,36 @@ await Actor.main(async () => {
                     return val || '';
                 };
 
-                // Match vacancyDetails elements case-insensitively
-                $l('*').each((_, el) => {
-                    if (!el.tagName || el.tagName.toLowerCase() !== 'vacancydetails') return;
+                const $vacancies = $l('vacancyDetails, vacancydetails');
+                const rawCount = $vacancies.length;
+
+                // Match top-level vacancyDetails only (avoid nested duplicates)
+                $vacancies.each((_, el) => {
                     try {
                         const $v = $l(el);
                         const ref = squash(childText($v, 'reference'));
                         const rawJobUrl = childText($v, 'url')?.replace('beta.jobs.nhs.uk', 'www.jobs.nhs.uk');
                         const jobUrl = normalizeUrl(rawJobUrl) || rawJobUrl || null;
-                        if (ref && !seen.has(ref)) {
-                            seen.add(ref);
-                            jobs.push({
-                                title: squash(childText($v, 'title')),
-                                company: squash(childText($v, 'employer')),
-                                salary: squash(childText($v, 'salary')),
-                                contract_type: squash(childText($v, 'type')),
-                                date_posted: formatDate(childText($v, 'postDate') || childText($v, 'postdate')),
-                                closing_date: formatDate(childText($v, 'closeDate') || childText($v, 'closedate')),
-                                reference: ref,
-                                url: jobUrl,
-                                location: squash($v.find('location').first().text()),
-                            });
-                        }
+                        if (!ref) return;
+                        if (seen.has(ref)) return;
+                        seen.add(ref);
+                        jobs.push({
+                            title: squash(childText($v, 'title')),
+                            company: squash(childText($v, 'employer')),
+                            salary: squash(childText($v, 'salary')),
+                            contract_type: squash(childText($v, 'type')),
+                            date_posted: formatDate(childText($v, 'postDate') || childText($v, 'postdate')),
+                            closing_date: formatDate(childText($v, 'closeDate') || childText($v, 'closedate')),
+                            reference: ref,
+                            url: jobUrl,
+                            location: squash(childText($v, 'location')),
+                        });
                     } catch (itemErr) {
                         log.warning(`Skipping malformed vacancy entry: ${itemErr.message}`);
                     }
                 });
 
-                log.info(`Found ${jobs.length} jobs on page ${page}`);
+                log.info(`Found ${jobs.length} jobs on page ${page} (${rawCount} in API response)`);
 
                 const remaining = Math.max(0, RESULTS_WANTED - (saved + batch.length + scheduledDetails));
                 const toProc = jobs.slice(0, remaining);
@@ -405,16 +433,16 @@ await Actor.main(async () => {
                         .map((job) => ({ url: job.url, userData: { label: 'DETAIL', fromList: job } }));
                     scheduledDetails += detailRequests.length;
                     await c.addRequests(detailRequests);
+                    for (const job of toProc.filter((j) => !j.url)) {
+                        batch.push(job);
+                    }
                 } else {
                     batch.push(...toProc);
                     if (batch.length >= BATCH_SIZE) await flush();
                 }
 
-                if (
-                    saved + batch.length + scheduledDetails < RESULTS_WANTED &&
-                    page < MAX_PAGES &&
-                    jobs.length > 0
-                ) {
+                const hasCapacity = saved + batch.length + scheduledDetails < RESULTS_WANTED;
+                if (hasCapacity && page < MAX_PAGES && rawCount >= 10) {
                     await c.addRequests([{ url: buildUrl(page + 1), userData: { label: 'LIST', page: page + 1 } }]);
                 }
                 return;

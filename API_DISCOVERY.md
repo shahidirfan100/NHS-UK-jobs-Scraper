@@ -23,6 +23,12 @@ Site: https://www.jobs.nhs.uk
 | location | string | no       | City, town, or postcode         |
 | page     | int    | no       | Pagination page number (1-based)|
 
+Explicit API parameter names (used by the actor):
+
+- param keyword: keyword
+- param location: location
+- param page: page
+
 **Response Fields** (inside <vacancyDetails>)
 
 | xml field   | description                  |

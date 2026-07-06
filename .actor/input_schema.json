@@ -37,6 +37,7 @@
       "type": "integer",
       "description": "Maximum number of jobs to extract. Leave empty or set high for unlimited.",
       "default": 20,
+      "prefill": 20,
       "editor": "number"
     },
     "max_pages": {

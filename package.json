@@ -3,21 +3,18 @@
   "version": "1.0",
   "description": "Extract NHS UK job listings with JSON API and HTML parsing capabilities. Fast, reliable, and comprehensive healthcare job data extraction.",
   "type": "module",
-  "scripts": {
-    "start": "node src/main.js"
-  },
   "dependencies": {
     "apify": "^3.7.0",
     "crawlee": "^3.16.0",
     "cheerio": "^1.2.0",
     "got-scraping": "^4.2.1"
   },
-    "devDependencies": {
-        "@apify/eslint-config": "^2.0.0",
-        "eslint": "^9.29.0",
-        "eslint-config-prettier": "^10.1.5",
-        "prettier": "^3.5.3",
-        "vitest": "^4.1.5"
+  "devDependencies": {
+    "@apify/eslint-config": "^2.0.0",
+    "eslint": "^9.29.0",
+    "eslint-config-prettier": "^10.1.5",
+    "prettier": "^3.5.3",
+    "vitest": "^4.1.5"
   },
   "scripts": {
     "start": "node src/main.js",
